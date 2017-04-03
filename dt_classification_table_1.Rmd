@@ -1,0 +1,135 @@
+---
+title: "Classification_tree_dt_1"
+author: "mayank"
+date: "April 1, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+##Libraries
+```{r packages used for performing decision trees}
+setwd("C:\\Users\\Mayank\\Desktop\\Projects\\Decision_Trees")
+library(dplyr) # a grammar of data manipulation
+library(rpart) #Recursive Partitioning and Regression Trees
+library(irr) #Various Coefficients of Interrater Reliability and Agreement
+library(caret) #Classification and Regression Training
+library(rattle) #display rattle user interface point & click interface
+library(rpart.plot) #Plot an rpart model. A simplified interface to the prp function.
+library(RColorBrewer) #ColorBrewer palettes
+```
+
+##Decision tree classifier to predict good and bad customer
+##decide good and bad customer based on how much they spent relative to average expenditure to total population
+##if > average exp = good customer or else bad customer 
+##1  = Good CUstomer; 0 = Bad Customer
+
+
+##Importing data
+```{r Importing dataset & basic exploration}
+dm <- read.csv("dm.csv",stringsAsFactors = FALSE)
+str(dm)
+dim(dm)
+head(dm)
+summary(dm)
+colSums(is.na(dm))
+#History has missing values : 303
+```
+##Data Exploration & Preparation
+```{r Treating missing values}
+dm <- dm %>% mutate(history1 = ifelse(is.na(History),"Missing",as.character(History)))
+dm <- dm %>% select(-History)
+dm$history1 <- as.factor(dm$history1)
+```
+
+```{r Creating target variable}
+dm <- dm %>% mutate(Target = ifelse(AmountSpent> mean(AmountSpent),1,0))
+dm <- dm %>% select(-AmountSpent)
+```
+
+```{r data preparation}
+dm$Children <- as.factor(dm$Children)
+dm$Catalogs <- as.factor(dm$Catalogs)
+
+```
+
+##Modelling
+```{r}
+mod1 <- rpart(formula = dm$Target~.,data = dm[,-9],control = rpart.control(minsplit = 2,cp = 0.002,maxdepth = 7),method = "class",parms = list(split = "gini") )
+summary(mod1)
+a=mod1$frame
+plot(mod1,margin = 0.1,main = "Classification Tree for Direct Marketing")
+text(mod1, use.n=TRUE, all=TRUE, cex=.7)
+table(dm$Target)
+fancyRpartPlot(mod1)
+
+
+```
+
+##Rpart : recursive partitioning and regression
+##formula : includes target variable and IDV all or selected
+##control:lists of options that control details of rpart algorithm ; minsplit:the minimum number of observations that must exist in a node in order for a split to be attempted ; cp:complexity parameter . The main role of this parameter is to save computing time by pruning off splits that are obviously not worthwhile.Essentially,the user informs the program that any split which does not improve the fit by cp will likely be pruned off by cross-validation, and that hence the program need not pursue it; maxdepth : Set the maximum depth of any node of the final tree, with the root node counted as depth 0. Values greater than 30 rpart will give nonsense results on 32-bit machines.
+##method	:one of "anova", "poisson", "class" or "exp"
+##parms : is used to inform what purity matrix is used to build a tree
+
+
+##Now plot the tree using base r plot + text function
+## for better plot used fancyRpartPlot() function
+
+##Now in order to cut the tree appropriately we use skree plot
+
+```{r}
+plotcp(mod1, minline = TRUE)
+```
+
+```{r pruning}
+mod2 <- prune(tree = mod1,cp = 0.035)
+fancyRpartPlot(mod2)
+mod2
+```
+#Extracting rules:
+#Node 4 :If history1 - Low,Medium,Missing & Salary<58650 then 0 i.e. 89% bad customers
+#Node 10:If history1 - Low,Medium & Salary<58650 then 0 i.e. 85% bad customers
+
+
+
+
+
+##Performance Metrics
+```{r confusion matrix}
+actual <- dm$Target
+predicted <- predict(mod1,type = "class")
+head(predicted)
+head(as.numeric(predicted))
+predicted <- as.numeric(predicted)
+predicted <- ifelse(predicted==2,1,0)
+confusionMatrix(predicted,actual,positive = "1")
+#performance of 92.2% indicates this is a good classifier
+```
+```{r kappa matrix}
+kappa2(data.frame(actual,predicted))
+#kappa of 83.6% indicates this is a good classifier
+```
+```{r ROC curve}
+library(ROCR)
+#we need true positive rate and false positive rate
+pred <- prediction(actual,predicted)
+perf <- performance(pred,"tpr","fpr")
+plot(perf,col = "red")
+abline(0,1,lty = 8,col = "grey")
+#The plot indicates that this is a good classifier
+```
+```{r details of hopw good the classifier is by auc}
+auc <- performance(pred,"auc")
+class(auc)
+auc
+unlist(auc@y.values)
+#for decent classifier auc curve should be > 0.6
+#hence our classifier is decent and our classification is good
+```
+
+
